@@ -31,3 +31,37 @@ export type StoreSettings = {
   gallery_address: string | null;
   opening_hours: string | null;
 };
+
+export type FilterOption = {
+  id: number;
+  name: string;
+  slug: string;
+};
+
+export type ColorOption = {
+  id: number;
+  name: string;
+  hex: string;
+};
+
+export type SizeOption = {
+  id: number;
+  label: string;
+};
+
+export type FiltersResponse = {
+  genders: Gender[];
+  categories: FilterOption[];
+  fits: FilterOption[];
+  materials: FilterOption[];
+  colors: ColorOption[];
+  sizes: SizeOption[];
+};
+
+export type ProductListResponse = {
+  data: Product[];
+  page: number;
+  limit: number;
+  total: number;
+};
+

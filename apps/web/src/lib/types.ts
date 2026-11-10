@@ -65,3 +65,25 @@ export type ProductListResponse = {
   total: number;
 };
 
+export type PriceTier = {
+  min_qty: number;
+  unit_price: number;
+};
+
+export type ProductDetail = Product & {
+  price_tiers: PriceTier[];
+};
+
+export type CreateOrderPayload = {
+  origin: 'online';
+  customer: { name: string; phone?: string; note?: string };
+  delivery: 'pickup' | 'delivery';
+  address?: string;
+  items: { variantId: string; qty: number }[];
+};
+
+export type CreateOrderResponse = {
+  code: string;
+  whatsappUrl: string;
+};
+

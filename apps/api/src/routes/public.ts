@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { supabase } from '../config/supabase';
 import { AppError } from '../utils/errors';
 import {
@@ -7,6 +8,21 @@ import {
   listProducts,
   productQuerySchema,
 } from '../services/products.service';
+import {
+  createOrder,
+  createOrderSchema,
+  validateCart,
+  validateCartSchema,
+} from '../services/orders.service';
+
+// Rate limit estricto para las rutas de pedidos (evita spam)
+const ordersLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 10,
+  message: { error: { code: 'TOO_MANY_REQUESTS', message: 'Demasiadas solicitudes. Espera un momento.' } },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 export const publicRouter = Router();
 
@@ -56,12 +72,16 @@ publicRouter.get('/products/:slug', async (req, res) => {
   res.json(await getProductBySlug(req.params.slug));
 });
 
-// TODO (fase 2): validar stock, recalcular precios (incluye precio por mayor) y devolver el carrito corregido.
-publicRouter.post('/cart/validate', () => {
-  throw new AppError(501, 'NOT_IMPLEMENTED', 'Pendiente: validación de carrito');
+// Valida stock y recalcula precios (incluye price_tiers para por mayor).
+publicRouter.post('/cart/validate', ordersLimiter, async (req, res) => {
+  const { items } = validateCartSchema.parse(req.body);
+  const result = await validateCart(items);
+  res.json(result);
 });
 
-// TODO (fase 2): guardar pedido + items, generar código (lo da la BD) y devolver { code, whatsappUrl, whatsappText }.
-publicRouter.post('/orders', () => {
-  throw new AppError(501, 'NOT_IMPLEMENTED', 'Pendiente: registro de pedidos');
+// Registra el pedido, genera el código y devuelve { code, whatsappUrl, whatsappText }.
+publicRouter.post('/orders', ordersLimiter, async (req, res) => {
+  const input = createOrderSchema.parse(req.body);
+  const result = await createOrder(input);
+  res.status(201).json(result);
 });

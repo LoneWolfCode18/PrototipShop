@@ -3,6 +3,28 @@ import { z } from 'zod';
 import { supabase } from '../config/supabase';
 import { requireAdmin } from '../middlewares/auth';
 import { AppError } from '../utils/errors';
+import {
+  addImageSchema,
+  adminAddImage,
+  adminCreateProduct,
+  adminCreateVariant,
+  adminDeleteImage,
+  adminDeleteVariant,
+  adminGetProduct,
+  adminGetStats,
+  adminListProducts,
+  adminSetPriceTiers,
+  adminSetProductStatus,
+  adminUpdateProduct,
+  adminUpdateSettings,
+  adminUpdateVariant,
+  createProductSchema,
+  createVariantSchema,
+  priceTierSchema,
+  updateProductSchema,
+  updateSettingsSchema,
+  updateVariantSchema,
+} from '../services/admin.service';
 
 export const adminRouter = Router();
 
@@ -11,24 +33,62 @@ adminRouter.use(requireAdmin);
 
 const uuid = z.string().uuid();
 
-// Lista completa de prendas (incluye inactivas) con sus variantes.
+/* ─── Dashboard ───────────────────────────────────────────────── */
+
+adminRouter.get('/stats', async (_req, res) => {
+  res.json(await adminGetStats());
+});
+
+/* ─── Productos ───────────────────────────────────────────────── */
+
 adminRouter.get('/products', async (_req, res) => {
-  const { data, error } = await supabase
-    .from('products')
-    .select('*, variants:product_variants(id, sku, stock, low_stock_threshold, size:sizes(label), color:colors(name))')
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  res.json({ data });
+  res.json({ data: await adminListProducts() });
 });
 
-// Prendas con poco stock (usa la vista v_low_stock).
-adminRouter.get('/stock/low', async (_req, res) => {
-  const { data, error } = await supabase.from('v_low_stock').select('*').order('stock');
-  if (error) throw error;
-  res.json({ data });
+adminRouter.get('/products/:id', async (req, res) => {
+  const id = uuid.parse(req.params.id);
+  res.json(await adminGetProduct(id));
 });
 
-// Ajustar stock de una variante: { delta: +10 | -2, reason: "Ingreso de mercadería" }
+adminRouter.post('/products', async (req, res) => {
+  const body = createProductSchema.parse(req.body);
+  const result = await adminCreateProduct(body);
+  res.status(201).json(result);
+});
+
+adminRouter.put('/products/:id', async (req, res) => {
+  const id = uuid.parse(req.params.id);
+  const body = updateProductSchema.parse(req.body);
+  res.json(await adminUpdateProduct(id, body));
+});
+
+adminRouter.patch('/products/:id/status', async (req, res) => {
+  const id = uuid.parse(req.params.id);
+  const { is_active } = z.object({ is_active: z.boolean() }).parse(req.body);
+  res.json(await adminSetProductStatus(id, is_active));
+});
+
+/* ─── Variantes ───────────────────────────────────────────────── */
+
+adminRouter.post('/products/:id/variants', async (req, res) => {
+  const productId = uuid.parse(req.params.id);
+  const body = createVariantSchema.parse(req.body);
+  const result = await adminCreateVariant(productId, body);
+  res.status(201).json(result);
+});
+
+adminRouter.put('/variants/:id', async (req, res) => {
+  const id = uuid.parse(req.params.id);
+  const body = updateVariantSchema.parse(req.body);
+  res.json(await adminUpdateVariant(id, body));
+});
+
+adminRouter.delete('/variants/:id', async (req, res) => {
+  const id = uuid.parse(req.params.id);
+  res.json(await adminDeleteVariant(id));
+});
+
+// Ajustar stock: { delta: +10 | -2, reason: "Ingreso de mercadería" }
 adminRouter.patch('/variants/:id/stock', async (req, res) => {
   const id = uuid.parse(req.params.id);
   const body = z
@@ -49,17 +109,78 @@ adminRouter.patch('/variants/:id/stock', async (req, res) => {
   res.json({ stock: data });
 });
 
+/* ─── Precios por mayor ────────────────────────────────────────── */
+
+adminRouter.put('/products/:id/price-tiers', async (req, res) => {
+  const id = uuid.parse(req.params.id);
+  const { tiers } = z.object({ tiers: z.array(priceTierSchema) }).parse(req.body);
+  res.json(await adminSetPriceTiers(id, tiers));
+});
+
+/* ─── Imágenes ────────────────────────────────────────────────── */
+
+adminRouter.post('/products/:id/images', async (req, res) => {
+  const productId = uuid.parse(req.params.id);
+  const body = addImageSchema.parse(req.body);
+  const result = await adminAddImage(productId, body);
+  res.status(201).json(result);
+});
+
+adminRouter.delete('/images/:id', async (req, res) => {
+  const id = uuid.parse(req.params.id);
+  res.json(await adminDeleteImage(id));
+});
+
+/* ─── Stock ───────────────────────────────────────────────────── */
+
+adminRouter.get('/stock/low', async (_req, res) => {
+  const { data, error } = await supabase.from('v_low_stock').select('*').order('stock');
+  if (error) throw error;
+  res.json({ data });
+});
+
+adminRouter.get('/stock/movements', async (req, res) => {
+  const variantId = req.query.variantId as string | undefined;
+  let q = supabase
+    .from('stock_movements')
+    .select('id, type, quantity, reason, created_at, variant_id')
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (variantId) q = q.eq('variant_id', variantId);
+  const { data, error } = await q;
+  if (error) throw error;
+  res.json({ data });
+});
+
+/* ─── Pedidos ─────────────────────────────────────────────────── */
+
 adminRouter.get('/orders', async (req, res) => {
   const status = z
     .enum(['enviado_whatsapp', 'confirmado', 'pagado', 'entregado', 'cancelado'])
     .optional()
     .parse(req.query.status);
 
-  let q = supabase.from('orders').select('*, items:order_items(*)').order('created_at', { ascending: false }).limit(100);
+  let q = supabase
+    .from('orders')
+    .select('*, items:order_items(*)')
+    .order('created_at', { ascending: false })
+    .limit(100);
   if (status) q = q.eq('status', status);
   const { data, error } = await q;
   if (error) throw error;
   res.json({ data });
+});
+
+adminRouter.get('/orders/:id', async (req, res) => {
+  const id = uuid.parse(req.params.id);
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*, items:order_items(*)')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new AppError(404, 'NOT_FOUND', 'Pedido no encontrado');
+  res.json(data);
 });
 
 // Cambiar estado. Al pasar a 'confirmado' se descuenta el stock (todo o nada).
@@ -70,7 +191,10 @@ adminRouter.patch('/orders/:id/status', async (req, res) => {
     .parse(req.body);
 
   if (status === 'confirmado') {
-    const { error } = await supabase.rpc('confirm_order', { p_order: id, p_user: res.locals.userId });
+    const { error } = await supabase.rpc('confirm_order', {
+      p_order: id,
+      p_user: res.locals.userId,
+    });
     if (error) throw new AppError(409, 'CONFIRM_ERROR', error.message);
   } else {
     const { error } = await supabase.from('orders').update({ status }).eq('id', id);
@@ -79,5 +203,41 @@ adminRouter.patch('/orders/:id/status', async (req, res) => {
   res.json({ ok: true, status });
 });
 
-// TODO (fase 3): POST/PUT/DELETE de productos, variantes, imágenes, precio por mayor,
-// catálogos (categorías, cortes, materiales, colores) y PUT /settings.
+/* ─── Settings ────────────────────────────────────────────────── */
+
+adminRouter.get('/settings', async (_req, res) => {
+  const { data, error } = await supabase
+    .from('store_settings')
+    .select('*')
+    .eq('id', 1)
+    .maybeSingle();
+  if (error) throw error;
+  res.json(data);
+});
+
+adminRouter.put('/settings', async (req, res) => {
+  const body = updateSettingsSchema.parse(req.body);
+  res.json(await adminUpdateSettings(body));
+});
+
+/* ─── Catálogos (lectura para los selects del formulario) ──────── */
+
+adminRouter.get('/catalogs', async (_req, res) => {
+  const [categories, fits, materials, colors, sizes] = await Promise.all([
+    supabase.from('categories').select('id, name, slug').eq('is_active', true).order('sort_order'),
+    supabase.from('fits').select('id, name, slug').order('name'),
+    supabase.from('materials').select('id, name, slug').order('name'),
+    supabase.from('colors').select('id, name, hex').order('name'),
+    supabase.from('sizes').select('id, label, sort_order').order('sort_order'),
+  ]);
+  for (const r of [categories, fits, materials, colors, sizes]) {
+    if (r.error) throw r.error;
+  }
+  res.json({
+    categories: categories.data,
+    fits: fits.data,
+    materials: materials.data,
+    colors: colors.data,
+    sizes: sizes.data,
+  });
+});

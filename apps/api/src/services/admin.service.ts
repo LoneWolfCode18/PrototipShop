@@ -53,6 +53,19 @@ export const updateSettingsSchema = z.object({
   welcome_message: z.string().trim().max(300).nullable().optional(),
 });
 
+export const createUserSchema = z.object({
+  email: z.string().trim().email('Correo electrónico inválido'),
+  password: z.string().min(8, 'La contraseña temporal debe tener al menos 8 caracteres'),
+  full_name: z.string().trim().min(2, 'El nombre debe tener al menos 2 caracteres'),
+  role: z.enum(['admin', 'vendedor']),
+});
+
+export const updateUserSchema = z.object({
+  full_name: z.string().trim().min(2).optional(),
+  role: z.enum(['admin', 'vendedor']).optional(),
+  is_active: z.boolean().optional(),
+});
+
 /* ─── Productos ───────────────────────────────────────────────── */
 
 export async function adminListProducts() {
@@ -330,5 +343,158 @@ export async function adminGetStats() {
     lowStockCount: lowStock.data?.length ?? 0,
     lowStockItems: lowStock.data ?? [],
     recentOrders: recentOrders ?? [],
+  };
+}
+
+/* ─── Usuarios ────────────────────────────────────────────────── */
+
+export async function adminListUsers() {
+  const [{ data: authData, error: authError }, { data: profiles, error: profileError }] =
+    await Promise.all([
+      supabase.auth.admin.listUsers({ perPage: 1000 }),
+      supabase
+        .from('profiles')
+        .select('id, full_name, role, is_active, created_at')
+        .order('created_at', { ascending: false }),
+    ]);
+
+  if (authError) throw authError;
+  if (profileError) throw profileError;
+
+  const authMap = new Map(authData.users.map((u) => [u.id, u]));
+
+  return (profiles ?? []).map((p) => {
+    const authUser = authMap.get(p.id);
+    return {
+      id: p.id,
+      email: authUser?.email ?? '',
+      full_name: p.full_name,
+      role: p.role,
+      is_active: p.is_active,
+      created_at: p.created_at,
+    };
+  });
+}
+
+export async function adminCreateUser(body: z.infer<typeof createUserSchema>) {
+  const { data: userData, error: userError } = await supabase.auth.admin.createUser({
+    email: body.email,
+    password: body.password,
+    email_confirm: true,
+    user_metadata: { full_name: body.full_name },
+  });
+
+  if (userError || !userData.user) {
+    throw new AppError(400, 'USER_CREATE_ERROR', userError?.message ?? 'No se pudo crear el usuario');
+  }
+
+  const userId = userData.user.id;
+
+  const { error: profileError } = await supabase.from('profiles').insert({
+    id: userId,
+    full_name: body.full_name,
+    role: body.role,
+    is_active: true,
+  });
+
+  if (profileError) {
+    // Si falla el insert, borrar el usuario de Auth
+    await supabase.auth.admin.deleteUser(userId);
+    throw new AppError(400, 'PROFILE_CREATE_ERROR', profileError.message);
+  }
+
+  return {
+    id: userId,
+    email: body.email,
+    full_name: body.full_name,
+    role: body.role,
+    is_active: true,
+    created_at: new Date().toISOString(),
+  };
+}
+
+export async function adminUpdateUser(
+  targetUserId: string,
+  currentUserId: string,
+  body: z.infer<typeof updateUserSchema>,
+) {
+  if (targetUserId === currentUserId) {
+    if (body.is_active === false) {
+      throw new AppError(400, 'SELF_DEACTIVATION', 'No puedes desactivar tu propia cuenta');
+    }
+    if (body.role === 'vendedor') {
+      throw new AppError(400, 'SELF_DEMOTION', 'No puedes quitarte el rol de administrador');
+    }
+  }
+
+  const { data: targetProfile, error: targetError } = await supabase
+    .from('profiles')
+    .select('id, full_name, role, is_active')
+    .eq('id', targetUserId)
+    .maybeSingle();
+
+  if (targetError) throw targetError;
+  if (!targetProfile) throw new AppError(404, 'NOT_FOUND', 'Usuario no encontrado');
+
+  const willBeInactive = body.is_active === false;
+  const willBeDemoted = body.role === 'vendedor';
+
+  if (targetProfile.role === 'admin' && targetProfile.is_active && (willBeInactive || willBeDemoted)) {
+    const { count, error: countError } = await supabase
+      .from('profiles')
+      .select('*', { count: 'exact', head: true })
+      .eq('role', 'admin')
+      .eq('is_active', true);
+
+    if (countError) throw countError;
+    if ((count ?? 0) <= 1) {
+      throw new AppError(
+        400,
+        'CANNOT_REMOVE_LAST_ADMIN',
+        'No se puede desactivar ni cambiar el rol al único administrador activo del sistema',
+      );
+    }
+  }
+
+  const updatePayload: Record<string, unknown> = {};
+  if (body.full_name !== undefined) updatePayload.full_name = body.full_name;
+  if (body.role !== undefined) updatePayload.role = body.role;
+  if (body.is_active !== undefined) updatePayload.is_active = body.is_active;
+
+  if (Object.keys(updatePayload).length > 0) {
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update(updatePayload)
+      .eq('id', targetUserId);
+
+    if (updateError) throw updateError;
+  }
+
+  if (body.full_name !== undefined) {
+    await supabase.auth.admin
+      .updateUserById(targetUserId, {
+        user_metadata: { full_name: body.full_name },
+      })
+      .catch(() => null);
+  }
+
+  const [{ data: updatedProfile, error: pError }, { data: authUser }] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('id, full_name, role, is_active, created_at')
+      .eq('id', targetUserId)
+      .single(),
+    supabase.auth.admin.getUserById(targetUserId),
+  ]);
+
+  if (pError) throw pError;
+
+  return {
+    id: updatedProfile.id,
+    email: authUser?.user?.email ?? '',
+    full_name: updatedProfile.full_name,
+    role: updatedProfile.role,
+    is_active: updatedProfile.is_active,
+    created_at: updatedProfile.created_at,
   };
 }

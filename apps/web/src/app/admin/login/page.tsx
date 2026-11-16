@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
@@ -9,8 +9,20 @@ export default function AdminLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [storeName, setStoreName] = useState('Tienda');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    supabase
+      .from('store_settings')
+      .select('store_name')
+      .eq('id', 1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.store_name) setStoreName(data.store_name);
+      });
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,7 +46,7 @@ export default function AdminLoginPage() {
         {/* Logo */}
         <div className="mb-8 text-center">
           <Link href="/" className="text-2xl font-black tracking-tight text-neutral-900">
-            RKeens
+            {storeName}
           </Link>
           <p className="mt-1 text-xs text-neutral-500">Panel de administración</p>
         </div>
@@ -58,13 +70,13 @@ export default function AdminLoginPage() {
               required
               autoComplete="email"
               autoFocus
-              placeholder="admin@rkeens.pe"
+              placeholder="tu-correo@ejemplo.com"
               className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition"
             />
           </div>
 
           {/* Contraseña */}
-          <div className="mb-5">
+          <div className="mb-2">
             <label htmlFor="password" className="block text-xs font-semibold text-neutral-700 mb-1">
               Contraseña
             </label>
@@ -78,6 +90,15 @@ export default function AdminLoginPage() {
               placeholder="••••••••"
               className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition"
             />
+          </div>
+
+          <div className="mb-5 flex justify-end">
+            <Link
+              href="/admin/recuperar"
+              className="text-xs font-medium text-neutral-600 hover:text-neutral-900 transition"
+            >
+              ¿Olvidaste tu contraseña?
+            </Link>
           </div>
 
           {/* Error */}

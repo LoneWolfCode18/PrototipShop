@@ -7,6 +7,7 @@ import { ApiError } from './apiClient';
 import type {
   AdminCatalogs,
   AdminProduct,
+  AdminUser,
   DashboardStats,
   Order,
   OrderStatus,
@@ -152,3 +153,31 @@ export const updateSettings = (body: Record<string, unknown>) =>
 
 /* ─── Catálogos ────────────────────────────────────────────────── */
 export const getCatalogs = () => adminApi<AdminCatalogs>('/catalogs');
+
+/* ─── Usuarios ────────────────────────────────────────────────── */
+export const listUsers = () =>
+  adminApi<{ data: AdminUser[] }>('/users').then((r) => r.data);
+
+export const createUser = (body: {
+  email: string;
+  password: string;
+  full_name: string;
+  role: 'admin' | 'vendedor';
+}) =>
+  adminApi<AdminUser>('/users', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+
+export const updateUser = (
+  id: string,
+  body: {
+    full_name?: string;
+    role?: 'admin' | 'vendedor';
+    is_active?: boolean;
+  },
+) =>
+  adminApi<AdminUser>(`/users/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });

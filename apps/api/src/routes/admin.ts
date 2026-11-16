@@ -24,6 +24,11 @@ import {
   updateProductSchema,
   updateSettingsSchema,
   updateVariantSchema,
+  createUserSchema,
+  updateUserSchema,
+  adminListUsers,
+  adminCreateUser,
+  adminUpdateUser,
 } from '../services/admin.service';
 
 export const adminRouter = Router();
@@ -240,4 +245,30 @@ adminRouter.get('/catalogs', async (_req, res) => {
     colors: colors.data,
     sizes: sizes.data,
   });
+});
+
+/* ─── Usuarios ────────────────────────────────────────────────── */
+
+adminRouter.get('/users', async (_req, res) => {
+  res.json({ data: await adminListUsers() });
+});
+
+adminRouter.post('/users', async (req, res) => {
+  const body = createUserSchema.parse(req.body);
+  const result = await adminCreateUser(body);
+  res.status(201).json(result);
+});
+
+adminRouter.patch('/users/:id', async (req, res) => {
+  const id = uuid.parse(req.params.id);
+  const body = updateUserSchema.parse(req.body);
+  const result = await adminUpdateUser(id, res.locals.userId, body);
+  res.json(result);
+});
+
+adminRouter.patch('/users', async (req, res) => {
+  const schemaWithId = updateUserSchema.extend({ id: uuid });
+  const { id, ...rest } = schemaWithId.parse(req.body);
+  const result = await adminUpdateUser(id, res.locals.userId, rest);
+  res.json(result);
 });

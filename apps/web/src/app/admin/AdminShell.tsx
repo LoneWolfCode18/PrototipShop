@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { ToastContainer } from '@/components/admin/ToastContainer';
 
 const PUBLIC_ADMIN_ROUTES = ['/admin/login', '/admin/recuperar', '/admin/restablecer'];
 
@@ -172,6 +173,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           {children}
         </main>
       </div>
+
+      <ToastContainer />
     </div>
   );
 }

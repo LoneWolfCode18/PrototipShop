@@ -271,7 +271,107 @@ export async function adminSetPriceTiers(
   return { ok: true };
 }
 
-/* ─── Imágenes (URL externa) ──────────────────────────────────── */
+export async function adminDuplicateProduct(id: string) {
+  // Obtener el producto original con variantes e imágenes
+  const { data: original, error: fetchError } = await supabase
+    .from('products')
+    .select(
+      `*, images:product_images(url, alt, sort_order, color_id),
+       variants:product_variants(size_id, color_id, stock, price_override, low_stock_threshold),
+       price_tiers(min_qty, unit_price)`,
+    )
+    .eq('id', id)
+    .maybeSingle();
+  if (fetchError) throw fetchError;
+  if (!original) throw new AppError(404, 'NOT_FOUND', 'Producto no encontrado');
+
+  // Generar slug único: base-(copia|copia-2|copia-3…)
+  const baseSlug = `${original.slug}-copia`;
+  let candidateSlug = baseSlug;
+  let attempt = 1;
+  while (true) {
+    const { data: existing } = await supabase
+      .from('products')
+      .select('id')
+      .eq('slug', candidateSlug)
+      .maybeSingle();
+    if (!existing) break;
+    attempt++;
+    candidateSlug = `${baseSlug}-${attempt}`;
+  }
+
+  // Crear producto copia (inactivo, nombre con "(Copia)")
+  const { data: newProduct, error: insertError } = await supabase
+    .from('products')
+    .insert({
+      name: `${original.name} (Copia)`,
+      slug: candidateSlug,
+      description: original.description,
+      gender: original.gender,
+      category_id: original.category_id,
+      fit_id: original.fit_id,
+      material_id: original.material_id,
+      base_price: original.base_price,
+      sale_price: original.sale_price,
+      is_featured: false,
+      is_active: false,
+    })
+    .select('id, slug')
+    .single();
+  if (insertError) throw insertError;
+
+  const newId = newProduct.id;
+
+  // Copiar price tiers
+  if (original.price_tiers?.length) {
+    await supabase
+      .from('price_tiers')
+      .insert(original.price_tiers.map((t: { min_qty: number; unit_price: number }) => ({ ...t, product_id: newId })));
+  }
+
+  // Copiar imágenes
+  if (original.images?.length) {
+    await supabase
+      .from('product_images')
+      .insert(
+        original.images.map((img: { url: string; alt: string | null; sort_order: number; color_id: number | null }) => ({
+          product_id: newId,
+          url: img.url,
+          alt: img.alt,
+          sort_order: img.sort_order,
+          color_id: img.color_id,
+        })),
+      );
+  }
+
+  // Copiar variantes con SKU único y stock 0
+  if (original.variants?.length) {
+    for (const v of original.variants as Array<{
+      size_id: number;
+      color_id: number;
+      stock: number;
+      price_override: number | null;
+      low_stock_threshold: number;
+    }>) {
+      // Generar SKU único basado en uuid truncado
+      const skuBase = `${newId.slice(0, 8)}-${v.size_id}-${v.color_id}`;
+      await supabase.from('product_variants').insert({
+        product_id: newId,
+        size_id: v.size_id,
+        color_id: v.color_id,
+        sku: skuBase,
+        stock: 0,
+        price_override: v.price_override,
+        low_stock_threshold: v.low_stock_threshold,
+        is_active: true,
+      });
+    }
+  }
+
+  return { id: newId, slug: candidateSlug };
+}
+
+
 
 export const addImageSchema = z.object({
   url: z.string().url(),
@@ -296,6 +396,25 @@ export async function adminAddImage(
 export async function adminDeleteImage(imageId: string) {
   const { error } = await supabase.from('product_images').delete().eq('id', imageId);
   if (error) throw error;
+  return { ok: true };
+}
+
+export async function adminReorderImages(
+  productId: string,
+  orderedIds: string[],
+) {
+  // Actualizar sort_order de cada imagen según su posición en el array
+  const updates = orderedIds.map((id, idx) =>
+    supabase
+      .from('product_images')
+      .update({ sort_order: idx })
+      .eq('id', id)
+      .eq('product_id', productId),
+  );
+  const results = await Promise.all(updates);
+  for (const r of results) {
+    if (r.error) throw r.error;
+  }
   return { ok: true };
 }
 

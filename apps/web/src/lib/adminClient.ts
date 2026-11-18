@@ -4,6 +4,7 @@
  * bajo la clave estándar de Supabase Auth.
  */
 import { ApiError } from './apiClient';
+import { supabase } from './supabase';
 import type {
   AdminCatalogs,
   AdminProduct,
@@ -84,6 +85,11 @@ export const setProductStatus = (id: string, is_active: boolean) =>
     body: JSON.stringify({ is_active }),
   });
 
+export const duplicateProduct = (id: string) =>
+  adminApi<{ id: string; slug: string }>(`/products/${id}/duplicate`, {
+    method: 'POST',
+  });
+
 /* ─── Variantes ───────────────────────────────────────────────── */
 export const createVariant = (productId: string, body: Record<string, unknown>) =>
   adminApi<{ id: string }>(`/products/${productId}/variants`, {
@@ -125,6 +131,52 @@ export const addImage = (
 
 export const deleteImage = (imageId: string) =>
   adminApi<{ ok: boolean }>(`/images/${imageId}`, { method: 'DELETE' });
+
+/* ─── Storage ─────────────────────────────────────────────────── */
+
+const BUCKET = 'product-images';
+const MAX_SIZE_BYTES = 3 * 1024 * 1024; // 3 MB
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+export function validateImageFile(file: File): string | null {
+  if (!ALLOWED_TYPES.includes(file.type)) {
+    return 'Solo se permiten imágenes JPG, PNG o WebP.';
+  }
+  if (file.size > MAX_SIZE_BYTES) {
+    return `El archivo supera el límite de 3 MB (${(file.size / 1024 / 1024).toFixed(1)} MB).`;
+  }
+  return null;
+}
+
+export async function uploadProductImage(
+  productId: string,
+  file: File,
+): Promise<string> {
+  const ext = file.name.split('.').pop() ?? 'jpg';
+  const path = `${productId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+    contentType: file.type,
+    upsert: false,
+  });
+  if (error) throw new ApiError(500, 'UPLOAD_ERROR', error.message);
+  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
+  return data.publicUrl;
+}
+
+export async function deleteStorageImage(url: string): Promise<void> {
+  // Extraer path relativo dentro del bucket a partir de la URL pública
+  const marker = `/storage/v1/object/public/${BUCKET}/`;
+  const idx = url.indexOf(marker);
+  if (idx === -1) return; // URL externa, no es de Storage
+  const path = url.slice(idx + marker.length);
+  await supabase.storage.from(BUCKET).remove([path]);
+}
+
+export const reorderImages = (productId: string, ids: string[]) =>
+  adminApi<{ ok: boolean }>(`/products/${productId}/images/reorder`, {
+    method: 'PUT',
+    body: JSON.stringify({ ids }),
+  });
 
 /* ─── Pedidos ─────────────────────────────────────────────────── */
 export const listOrders = (status?: OrderStatus) =>

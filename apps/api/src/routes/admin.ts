@@ -10,9 +10,11 @@ import {
   adminCreateVariant,
   adminDeleteImage,
   adminDeleteVariant,
+  adminDuplicateProduct,
   adminGetProduct,
   adminGetStats,
   adminListProducts,
+  adminReorderImages,
   adminSetPriceTiers,
   adminSetProductStatus,
   adminUpdateProduct,
@@ -71,6 +73,12 @@ adminRouter.patch('/products/:id/status', async (req, res) => {
   const id = uuid.parse(req.params.id);
   const { is_active } = z.object({ is_active: z.boolean() }).parse(req.body);
   res.json(await adminSetProductStatus(id, is_active));
+});
+
+adminRouter.post('/products/:id/duplicate', async (req, res) => {
+  const id = uuid.parse(req.params.id);
+  const result = await adminDuplicateProduct(id);
+  res.status(201).json(result);
 });
 
 /* ─── Variantes ───────────────────────────────────────────────── */
@@ -134,6 +142,12 @@ adminRouter.post('/products/:id/images', async (req, res) => {
 adminRouter.delete('/images/:id', async (req, res) => {
   const id = uuid.parse(req.params.id);
   res.json(await adminDeleteImage(id));
+});
+
+adminRouter.put('/products/:id/images/reorder', async (req, res) => {
+  const productId = uuid.parse(req.params.id);
+  const { ids } = z.object({ ids: z.array(uuid) }).parse(req.body);
+  res.json(await adminReorderImages(productId, ids));
 });
 
 /* ─── Stock ───────────────────────────────────────────────────── */

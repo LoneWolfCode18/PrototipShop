@@ -2,17 +2,28 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { listAdminProducts, setProductStatus } from '@/lib/adminClient';
+import { useRouter } from 'next/navigation';
+import { listAdminProducts, setProductStatus, duplicateProduct } from '@/lib/adminClient';
+import { toast } from '@/lib/toast';
 import type { AdminProduct } from '@/lib/types';
 
 const money = (n: number) => `S/ ${n.toFixed(2)}`;
 
+type Gender = 'dama' | 'caballero' | 'unisex';
+
 export default function ProductosAdminPage() {
+  const router = useRouter();
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [toggling, setToggling] = useState<string | null>(null);
+  const [duplicating, setDuplicating] = useState<string | null>(null);
+
+  // Filtros
+  const [filterGender, setFilterGender] = useState<Gender | ''>('');
+  const [filterCategory, setFilterCategory] = useState<string>('');
+  const [filterActive, setFilterActive] = useState<'all' | 'active' | 'inactive'>('all');
 
   const fetchProducts = useCallback(() => {
     setLoading(true);
@@ -28,17 +39,61 @@ export default function ProductosAdminPage() {
     try {
       await setProductStatus(product.id, !product.is_active);
       fetchProducts();
+      toast.success(
+        product.is_active
+          ? `"${product.name}" desactivado.`
+          : `"${product.name}" activado.`,
+      );
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Error');
+      toast.error(err instanceof Error ? err.message : 'Error');
     } finally {
       setToggling(null);
     }
   };
 
-  const filtered = products.filter((p) =>
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.slug.toLowerCase().includes(search.toLowerCase()),
-  );
+  const handleDuplicate = async (product: AdminProduct) => {
+    if (!confirm(`¿Duplicar "${product.name}"? Se creará una copia inactiva.`)) return;
+    setDuplicating(product.id);
+    try {
+      const result = await duplicateProduct(product.id);
+      toast.success(`Copia creada. Redirigiendo al editor…`);
+      router.push(`/admin/productos/${result.id}/editar`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Error al duplicar');
+    } finally {
+      setDuplicating(null);
+    }
+  };
+
+  // Categorías únicas presentes en la lista
+  const categoryOptions = Array.from(
+    new Map(
+      products
+        .filter((p) => p.category)
+        .map((p) => [p.category!.id, p.category!]),
+    ).values(),
+  ).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+
+  const filtered = products.filter((p) => {
+    if (search && !(
+      p.name.toLowerCase().includes(search.toLowerCase()) ||
+      p.slug.toLowerCase().includes(search.toLowerCase())
+    )) return false;
+    if (filterGender && p.gender !== filterGender) return false;
+    if (filterCategory && String(p.category?.id) !== filterCategory) return false;
+    if (filterActive === 'active' && !p.is_active) return false;
+    if (filterActive === 'inactive' && p.is_active) return false;
+    return true;
+  });
+
+  const hasFilters = search || filterGender || filterCategory || filterActive !== 'all';
+
+  const clearFilters = () => {
+    setSearch('');
+    setFilterGender('');
+    setFilterCategory('');
+    setFilterActive('all');
+  };
 
   return (
     <div className="space-y-5">
@@ -52,14 +107,58 @@ export default function ProductosAdminPage() {
         </Link>
       </div>
 
-      {/* Buscador */}
-      <input
-        type="search"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Buscar por nombre o slug…"
-        className="w-full max-w-sm rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900"
-      />
+      {/* Buscador + Filtros */}
+      <div className="flex flex-wrap gap-2 items-end">
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por nombre o slug…"
+          className="rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 w-56"
+        />
+
+        <select
+          value={filterGender}
+          onChange={(e) => setFilterGender(e.target.value as Gender | '')}
+          className="rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-900"
+        >
+          <option value="">Todos los géneros</option>
+          <option value="dama">Dama</option>
+          <option value="caballero">Caballero</option>
+          <option value="unisex">Unisex</option>
+        </select>
+
+        <select
+          value={filterCategory}
+          onChange={(e) => setFilterCategory(e.target.value)}
+          className="rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-900"
+        >
+          <option value="">Todas las categorías</option>
+          {categoryOptions.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+
+        <select
+          value={filterActive}
+          onChange={(e) => setFilterActive(e.target.value as 'all' | 'active' | 'inactive')}
+          className="rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-900"
+        >
+          <option value="all">Activos e inactivos</option>
+          <option value="active">Solo activos</option>
+          <option value="inactive">Solo inactivos</option>
+        </select>
+
+        {hasFilters && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-medium text-neutral-500 hover:bg-neutral-50 transition"
+          >
+            Limpiar filtros
+          </button>
+        )}
+      </div>
 
       {error && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{error}</div>
@@ -71,7 +170,7 @@ export default function ProductosAdminPage() {
         </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-xl border border-dashed border-neutral-200 p-10 text-center text-sm text-neutral-500">
-          {search ? 'Sin resultados para esa búsqueda.' : 'No hay prendas aún.'}
+          {hasFilters ? 'Sin resultados para esos filtros.' : 'No hay prendas aún.'}
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
@@ -139,6 +238,15 @@ export default function ProductosAdminPage() {
                   >
                     Editar
                   </Link>
+                  <button
+                    type="button"
+                    disabled={duplicating === product.id}
+                    onClick={() => handleDuplicate(product)}
+                    className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-500 hover:bg-neutral-50 disabled:opacity-50 transition"
+                    title="Duplicar producto"
+                  >
+                    {duplicating === product.id ? '…' : 'Duplicar'}
+                  </button>
                   <Link
                     href={`/producto/${product.slug}`}
                     target="_blank"
@@ -153,6 +261,13 @@ export default function ProductosAdminPage() {
             ))}
           </div>
         </div>
+      )}
+
+      {/* Contador de resultados */}
+      {!loading && products.length > 0 && (
+        <p className="text-xs text-neutral-400">
+          Mostrando {filtered.length} de {products.length} prendas
+        </p>
       )}
     </div>
   );

@@ -1,19 +1,24 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
+  addImage,
   createProduct,
   createVariant,
   deleteImage,
+  deleteStorageImage,
   deleteVariant,
-  addImage,
   getCatalogs,
+  reorderImages,
   setPriceTiers,
   updateProduct,
   updateVariant,
+  uploadProductImage,
+  validateImageFile,
 } from '@/lib/adminClient';
 import { ApiError } from '@/lib/apiClient';
+import { toast } from '@/lib/toast';
 import type { AdminCatalogs, AdminProduct, AdminVariant, PriceTier } from '@/lib/types';
 
 interface ProductFormProps {
@@ -106,6 +111,13 @@ export function ProductForm({ product }: ProductFormProps) {
   const [newImageAlt, setNewImageAlt] = useState('');
   const [addingImage, setAddingImage] = useState(false);
 
+  // Estado subida de archivo
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadPreview, setUploadPreview] = useState<string | null>(null);
+  const [uploadAlt, setUploadAlt] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   /* ── Cargar catálogos ── */
   useEffect(() => {
     getCatalogs().then(setCatalogs).catch(() => null);
@@ -152,6 +164,7 @@ export function ProductForm({ product }: ProductFormProps) {
           product.id,
           tiers.map(({ min_qty, unit_price }) => ({ min_qty, unit_price })),
         );
+        toast.success('Prenda actualizada correctamente.');
         setSuccess('Prenda actualizada correctamente.');
       } else {
         const result = await createProduct(payload);
@@ -159,7 +172,9 @@ export function ProductForm({ product }: ProductFormProps) {
         return;
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Error al guardar');
+      const msg = err instanceof ApiError ? err.message : 'Error al guardar';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
@@ -188,8 +203,7 @@ export function ProductForm({ product }: ProductFormProps) {
       setNewVariant({ size_id: '', color_id: '', sku: '', stock: '0', price_override: '' });
     } catch (err) {
       setVariantError(err instanceof ApiError ? err.message : 'Error al agregar variante');
-    } finally {
-      setAddingVariant(false);
+    } finally {      setAddingVariant(false);
     }
   };
 
@@ -198,8 +212,9 @@ export function ProductForm({ product }: ProductFormProps) {
     try {
       await deleteVariant(variantId);
       setVariants((v) => v.filter((x) => x.id !== variantId));
+      toast.success('Variante eliminada.');
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Error');
+      toast.error(err instanceof ApiError ? err.message : 'Error');
     }
   };
 
@@ -213,8 +228,9 @@ export function ProductForm({ product }: ProductFormProps) {
       setImages(updated.images);
       setNewImageUrl('');
       setNewImageAlt('');
+      toast.success('Imagen agregada.');
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Error al agregar imagen');
+      toast.error(err instanceof ApiError ? err.message : 'Error al agregar imagen');
     } finally {
       setAddingImage(false);
     }
@@ -222,11 +238,88 @@ export function ProductForm({ product }: ProductFormProps) {
 
   const handleDeleteImage = async (imageId: string) => {
     if (!confirm('¿Quitar esta imagen?')) return;
+    const img = images.find((i) => i.id === imageId);
     try {
       await deleteImage(imageId);
+      // Si la URL es de nuestro bucket, borrar el archivo de Storage
+      if (img?.url) await deleteStorageImage(img.url);
       setImages((imgs) => imgs.filter((i) => i.id !== imageId));
+      toast.success('Imagen eliminada.');
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Error');
+      toast.error(err instanceof ApiError ? err.message : 'Error');
+    }
+  };
+
+  /* Subir archivo a Storage y registrar en BD */
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const validationError = validateImageFile(file);
+    if (validationError) {
+      toast.error(validationError);
+      e.target.value = '';
+      return;
+    }
+    setUploadFile(file);
+    setUploadPreview(URL.createObjectURL(file));
+  };
+
+  const handleUploadFile = async () => {
+    if (!uploadFile || !product) return;
+    setUploading(true);
+    try {
+      const publicUrl = await uploadProductImage(product.id, uploadFile);
+      await addImage(product.id, {
+        url: publicUrl,
+        alt: uploadAlt.trim() || undefined,
+        sort_order: images.length,
+      });
+      const updated = await import('@/lib/adminClient').then((m) => m.getAdminProduct(product.id));
+      setImages(updated.images);
+      setUploadFile(null);
+      setUploadPreview(null);
+      setUploadAlt('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      toast.success('Imagen subida correctamente.');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Error al subir imagen');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  /* Mover imagen: intercambiar posición y persistir */
+  const moveImage = async (index: number, direction: 'up' | 'down') => {
+    if (!product) return;
+    const newImages = [...images];
+    const swapIdx = direction === 'up' ? index - 1 : index + 1;
+    if (swapIdx < 0 || swapIdx >= newImages.length) return;
+    [newImages[index], newImages[swapIdx]] = [newImages[swapIdx], newImages[index]];
+    setImages(newImages);
+    try {
+      await reorderImages(product.id, newImages.map((i) => i.id));
+    } catch {
+      // Revertir si falla
+      setImages(images);
+      toast.error('No se pudo guardar el orden.');
+    }
+  };
+
+  /* Marcar imagen como principal (moverla al índice 0) */
+  const handleSetPrimary = async (imageId: string) => {
+    if (!product) return;
+    const idx = images.findIndex((i) => i.id === imageId);
+    if (idx <= 0) return;
+    const reordered = [...images];
+    const [item] = reordered.splice(idx, 1);
+    reordered.unshift(item);
+    setImages(reordered);
+    try {
+      await reorderImages(product.id, reordered.map((i) => i.id));
+      toast.success('Imagen marcada como principal.');
+    } catch {
+      setImages(images);
+      toast.error('No se pudo marcar como principal.');
     }
   };
 
@@ -235,6 +328,23 @@ export function ProductForm({ product }: ProductFormProps) {
   const removeTier = (i: number) => setTiers((t) => t.filter((_, idx) => idx !== i));
   const updateTier = (i: number, key: keyof PriceTier, val: number) =>
     setTiers((t) => t.map((tier, idx) => (idx === i ? { ...tier, [key]: val } : tier)));
+
+  /* ── Ordenar variantes: color asc, luego sort_order de talla asc ── */
+  const sortedVariants = [...variants].sort((a, b) => {
+    const colorA = a.color?.name ?? '';
+    const colorB = b.color?.name ?? '';
+    if (colorA !== colorB) return colorA.localeCompare(colorB, 'es');
+    // Buscar sort_order en el catálogo; si no se encuentra, usar un valor alto
+    const SIZE_ORDER: Record<string, number> = { S: 1, M: 2, L: 3, XL: 4, XXL: 5 };
+    const getSizeOrder = (v: AdminVariant) => {
+      if (catalogs && v.size?.id !== undefined) {
+        const found = catalogs.sizes.find((s) => s.id === v.size!.id);
+        if (found) return found.sort_order;
+      }
+      return SIZE_ORDER[v.size?.label ?? ''] ?? 99;
+    };
+    return getSizeOrder(a) - getSizeOrder(b);
+  });
 
   /* ══════════════════════════════════════════════════════════════ */
 
@@ -497,7 +607,7 @@ export function ProductForm({ product }: ProductFormProps) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-50">
-                  {variants.map((v) => (
+                  {sortedVariants.map((v) => (
                     <VariantRow
                       key={v.id}
                       variant={v}
@@ -576,54 +686,152 @@ export function ProductForm({ product }: ProductFormProps) {
       {/* ── Imágenes (solo en edición) ── */}
       {isEditing && (
         <div className="rounded-xl border border-neutral-200 bg-white p-5 space-y-4">
-          <h2 className="text-sm font-bold text-neutral-900">Imágenes (URL)</h2>
+          <h2 className="text-sm font-bold text-neutral-900">Imágenes</h2>
+
+          {/* Galería actual */}
           {images.length === 0 ? (
             <p className="text-xs text-neutral-400">Sin imágenes aún.</p>
           ) : (
             <div className="flex flex-wrap gap-3">
-              {images.map((img) => (
-                <div key={img.id} className="relative group">
+              {images.map((img, idx) => (
+                <div key={img.id} className="relative group flex flex-col items-center gap-1">
+                  {/* Badge principal */}
+                  {idx === 0 && (
+                    <span className="absolute -top-2 left-1/2 -translate-x-1/2 z-10 rounded-full bg-amber-400 px-1.5 py-0.5 text-[9px] font-bold text-white whitespace-nowrap">
+                      Principal
+                    </span>
+                  )}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={img.url}
                     alt={img.alt ?? ''}
-                    className="h-20 w-16 rounded-lg object-cover border border-neutral-200"
+                    className={`h-20 w-16 rounded-lg object-cover border ${idx === 0 ? 'border-amber-400 border-2' : 'border-neutral-200'}`}
                   />
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteImage(img.id)}
-                    className="absolute -top-1.5 -right-1.5 hidden group-hover:flex h-5 w-5 items-center justify-center rounded-full bg-rose-600 text-white text-xs shadow"
-                    aria-label="Quitar imagen"
-                  >
-                    ×
-                  </button>
+                  {/* Controles */}
+                  <div className="hidden group-hover:flex items-center gap-1">
+                    {idx !== 0 && (
+                      <button
+                        type="button"
+                        onClick={() => handleSetPrimary(img.id)}
+                        className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 hover:bg-amber-200 transition"
+                        title="Marcar como principal"
+                      >
+                        ★
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => moveImage(idx, 'up')}
+                      disabled={idx === 0}
+                      className="rounded bg-neutral-100 px-1 py-0.5 text-xs text-neutral-600 hover:bg-neutral-200 disabled:opacity-30 transition"
+                      title="Mover izquierda"
+                    >
+                      ←
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveImage(idx, 'down')}
+                      disabled={idx === images.length - 1}
+                      className="rounded bg-neutral-100 px-1 py-0.5 text-xs text-neutral-600 hover:bg-neutral-200 disabled:opacity-30 transition"
+                      title="Mover derecha"
+                    >
+                      →
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteImage(img.id)}
+                      className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 hover:bg-rose-200 transition"
+                      aria-label="Quitar imagen"
+                    >
+                      ×
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
           )}
-          <div className="flex gap-3">
-            <input
-              type="url"
-              value={newImageUrl}
-              onChange={(e) => setNewImageUrl(e.target.value)}
-              placeholder="https://... (URL de la imagen)"
-              className={`${inputCls} flex-1`}
-            />
-            <input
-              type="text"
-              value={newImageAlt}
-              onChange={(e) => setNewImageAlt(e.target.value)}
-              placeholder="Descripción (opcional)"
-              className={`${inputCls} w-40`}
-            />
-            <button
-              type="button"
-              disabled={!newImageUrl.trim() || addingImage}
-              onClick={handleAddImage}
-              className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50 transition flex-shrink-0"
-            >
-              {addingImage ? '…' : 'Agregar'}
-            </button>
+
+          {/* Subir desde archivo */}
+          <div className="border-t border-neutral-100 pt-4 space-y-3">
+            <p className="text-xs font-semibold text-neutral-700">Subir desde archivo</p>
+            <div className="flex flex-wrap gap-3 items-end">
+              <div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleFileChange}
+                  className="block text-xs text-neutral-600 file:mr-3 file:rounded-lg file:border file:border-neutral-200 file:bg-white file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-neutral-700 hover:file:bg-neutral-50 transition"
+                />
+                <p className="mt-1 text-[10px] text-neutral-400">JPG, PNG o WebP · máx. 3 MB</p>
+              </div>
+              {uploadPreview && (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={uploadPreview}
+                  alt="Vista previa"
+                  className="h-16 w-14 rounded-lg object-cover border border-neutral-200"
+                />
+              )}
+              <input
+                type="text"
+                value={uploadAlt}
+                onChange={(e) => setUploadAlt(e.target.value)}
+                placeholder="Descripción (opcional)"
+                className={`${inputCls} w-40`}
+              />
+              <button
+                type="button"
+                disabled={!uploadFile || uploading}
+                onClick={handleUploadFile}
+                className="rounded-lg bg-neutral-900 px-4 py-2 text-xs font-bold text-white hover:bg-neutral-700 disabled:opacity-50 transition"
+              >
+                {uploading ? 'Subiendo…' : 'Subir imagen'}
+              </button>
+              {uploadFile && !uploading && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUploadFile(null);
+                    setUploadPreview(null);
+                    setUploadAlt('');
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                  }}
+                  className="text-xs text-neutral-400 hover:text-neutral-700 transition"
+                >
+                  Cancelar
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Pegar URL */}
+          <div className="border-t border-neutral-100 pt-4 space-y-2">
+            <p className="text-xs font-semibold text-neutral-700">Agregar por URL</p>
+            <div className="flex gap-3">
+              <input
+                type="url"
+                value={newImageUrl}
+                onChange={(e) => setNewImageUrl(e.target.value)}
+                placeholder="https://... (URL de la imagen)"
+                className={`${inputCls} flex-1`}
+              />
+              <input
+                type="text"
+                value={newImageAlt}
+                onChange={(e) => setNewImageAlt(e.target.value)}
+                placeholder="Descripción (opcional)"
+                className={`${inputCls} w-40`}
+              />
+              <button
+                type="button"
+                disabled={!newImageUrl.trim() || addingImage}
+                onClick={handleAddImage}
+                className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50 transition flex-shrink-0"
+              >
+                {addingImage ? '…' : 'Agregar'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -652,8 +860,9 @@ function VariantRow({
       await updateVariant(variant.id, { stock: parseInt(stock, 10) });
       onUpdated({ ...variant, stock: parseInt(stock, 10) });
       setEditing(false);
+      toast.success('Stock actualizado.');
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Error');
+      toast.error(err instanceof ApiError ? err.message : 'Error');
     } finally {
       setSaving(false);
     }

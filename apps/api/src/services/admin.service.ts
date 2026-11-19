@@ -418,6 +418,59 @@ export async function adminReorderImages(
   return { ok: true };
 }
 
+/* ─── Mostrador ───────────────────────────────────────────────── */
+
+export const updateCounterSchema = z.object({
+  show_in_counter:     z.boolean().optional(),
+  counter_order:       z.number().int().min(0).optional(),
+  is_counter_featured: z.boolean().optional(),
+});
+
+export async function adminListCounterProducts() {
+  const { data, error } = await supabase
+    .from('products')
+    .select(
+      `id, name, slug, gender, base_price, sale_price, is_featured, is_active,
+       show_in_counter, counter_order, is_counter_featured,
+       category:categories(id, name, slug),
+       images:product_images(id, url, alt, sort_order),
+       variants:product_variants(id, sku, stock, is_active, size:sizes(label), color:colors(name, hex))`,
+    )
+    .order('counter_order', { ascending: true })
+    .order('name', { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function adminUpdateCounterProduct(
+  id: string,
+  body: z.infer<typeof updateCounterSchema>,
+) {
+  const { data, error } = await supabase
+    .from('products')
+    .update({ ...body, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select('id')
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new AppError(404, 'NOT_FOUND', 'Producto no encontrado');
+  return { ok: true };
+}
+
+export async function adminReorderCounter(orderedIds: string[]) {
+  const updates = orderedIds.map((id, idx) =>
+    supabase
+      .from('products')
+      .update({ counter_order: idx, updated_at: new Date().toISOString() })
+      .eq('id', id),
+  );
+  const results = await Promise.all(updates);
+  for (const r of results) {
+    if (r.error) throw r.error;
+  }
+  return { ok: true };
+}
+
 /* ─── Settings ────────────────────────────────────────────────── */
 
 export async function adminUpdateSettings(body: z.infer<typeof updateSettingsSchema>) {

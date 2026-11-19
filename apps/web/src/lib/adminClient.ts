@@ -206,6 +206,30 @@ export const updateSettings = (body: Record<string, unknown>) =>
 /* ─── Catálogos ────────────────────────────────────────────────── */
 export const getCatalogs = () => adminApi<AdminCatalogs>('/catalogs');
 
+/* ─── Mostrador ───────────────────────────────────────────────── */
+
+export const listCounterProducts = () =>
+  adminApi<{ data: import('./types').AdminProduct[] }>('/counter').then((r) => r.data);
+
+export const updateCounterSettings = (
+  productId: string,
+  body: {
+    show_in_counter?: boolean;
+    counter_order?: number;
+    is_counter_featured?: boolean;
+  },
+) =>
+  adminApi<{ ok: boolean }>(`/counter/${productId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+
+export const reorderCounter = (orderedIds: string[]) =>
+  adminApi<{ ok: boolean }>('/counter/reorder', {
+    method: 'PUT',
+    body: JSON.stringify({ ids: orderedIds }),
+  });
+
 /* ─── Usuarios ────────────────────────────────────────────────── */
 export const listUsers = () =>
   adminApi<{ data: AdminUser[] }>('/users').then((r) => r.data);

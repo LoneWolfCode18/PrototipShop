@@ -82,6 +82,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     { href: '/admin', label: 'Inicio', exact: true },
     { href: '/admin/pedidos', label: 'Pedidos' },
     { href: '/admin/productos', label: 'Productos' },
+    { href: '/admin/mostrador', label: 'Mostrador' },
     { href: '/admin/stock', label: 'Stock' },
     ...(userRole === 'admin' || userRole === null ? [{ href: '/admin/usuarios', label: 'Usuarios' }] : []),
     { href: '/admin/settings', label: 'Configuración' },

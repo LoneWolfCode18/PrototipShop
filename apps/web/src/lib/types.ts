@@ -127,6 +127,10 @@ export type AdminProduct = {
   sale_price: number | null;
   is_featured: boolean;
   is_active: boolean;
+  // Mostrador (003_mostrador.sql)
+  show_in_counter: boolean;
+  counter_order: number;
+  is_counter_featured: boolean;
   created_at: string;
   category: { id: number; name: string; slug: string } | null;
   fit: { id: number; name: string; slug: string } | null;
@@ -134,6 +138,25 @@ export type AdminProduct = {
   images: { id: string; url: string; alt: string | null; sort_order: number }[];
   variants: AdminVariant[];
   price_tiers: PriceTier[];
+};
+
+/** Fila de v_mostrador — lectura pública por supabase-js (anon key) */
+export type CounterProduct = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  gender: Gender;
+  base_price: number;
+  sale_price: number | null;
+  final_price: number;
+  is_featured: boolean;
+  is_counter_featured: boolean;
+  counter_order: number;
+  total_stock: number;
+  category_name: string | null;
+  category_slug: string | null;
+  cover_url: string | null;
 };
 
 export type AdminCatalogs = {

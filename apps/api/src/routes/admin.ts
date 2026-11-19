@@ -13,16 +13,20 @@ import {
   adminDuplicateProduct,
   adminGetProduct,
   adminGetStats,
+  adminListCounterProducts,
   adminListProducts,
+  adminReorderCounter,
   adminReorderImages,
   adminSetPriceTiers,
   adminSetProductStatus,
+  adminUpdateCounterProduct,
   adminUpdateProduct,
   adminUpdateSettings,
   adminUpdateVariant,
   createProductSchema,
   createVariantSchema,
   priceTierSchema,
+  updateCounterSchema,
   updateProductSchema,
   updateSettingsSchema,
   updateVariantSchema,
@@ -285,4 +289,21 @@ adminRouter.patch('/users', async (req, res) => {
   const { id, ...rest } = schemaWithId.parse(req.body);
   const result = await adminUpdateUser(id, res.locals.userId, rest);
   res.json(result);
+});
+
+/* ─── Mostrador ───────────────────────────────────────────────── */
+
+adminRouter.get('/counter', async (_req, res) => {
+  res.json({ data: await adminListCounterProducts() });
+});
+
+adminRouter.patch('/counter/:id', async (req, res) => {
+  const id = uuid.parse(req.params.id);
+  const body = updateCounterSchema.parse(req.body);
+  res.json(await adminUpdateCounterProduct(id, body));
+});
+
+adminRouter.put('/counter/reorder', async (req, res) => {
+  const { ids } = z.object({ ids: z.array(uuid) }).parse(req.body);
+  res.json(await adminReorderCounter(ids));
 });

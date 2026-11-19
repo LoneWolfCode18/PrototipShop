@@ -179,8 +179,22 @@ export const reorderImages = (productId: string, ids: string[]) =>
   });
 
 /* ─── Pedidos ─────────────────────────────────────────────────── */
-export const listOrders = (status?: OrderStatus) =>
-  adminApi<{ data: Order[] }>(`/orders${status ? `?status=${status}` : ''}`).then((r) => r.data);
+export type OrderFilters = {
+  status?: OrderStatus;
+  search?: string;
+  date_from?: string; // YYYY-MM-DD
+  date_to?: string;   // YYYY-MM-DD
+};
+
+export const listOrders = (filters: OrderFilters = {}) => {
+  const params = new URLSearchParams();
+  if (filters.status)    params.set('status',    filters.status);
+  if (filters.search)    params.set('search',    filters.search);
+  if (filters.date_from) params.set('date_from', filters.date_from);
+  if (filters.date_to)   params.set('date_to',   filters.date_to);
+  const qs = params.toString();
+  return adminApi<{ data: Order[] }>(`/orders${qs ? `?${qs}` : ''}`).then((r) => r.data);
+};
 
 export const getOrder = (id: string) => adminApi<Order>(`/orders/${id}`);
 

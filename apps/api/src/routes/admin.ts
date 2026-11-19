@@ -178,20 +178,45 @@ adminRouter.get('/stock/movements', async (req, res) => {
 /* ─── Pedidos ─────────────────────────────────────────────────── */
 
 adminRouter.get('/orders', async (req, res) => {
-  const status = z
-    .enum(['enviado_whatsapp', 'confirmado', 'pagado', 'entregado', 'cancelado'])
-    .optional()
-    .parse(req.query.status);
+  const querySchema = z.object({
+    status: z
+      .enum(['enviado_whatsapp', 'confirmado', 'pagado', 'entregado', 'cancelado'])
+      .optional(),
+    // búsqueda por código o nombre de cliente (case-insensitive, parcial)
+    search: z.string().trim().max(80).optional(),
+    // rango de fechas ISO-8601 (solo la parte de fecha, e.g. "2026-10-01")
+    date_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    date_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  });
+
+  const { status, search, date_from, date_to } = querySchema.parse(req.query);
 
   let q = supabase
     .from('orders')
     .select('*, items:order_items(*)')
     .order('created_at', { ascending: false })
-    .limit(100);
+    .limit(200);
+
   if (status) q = q.eq('status', status);
+  if (date_from) q = q.gte('created_at', `${date_from}T00:00:00.000Z`);
+  if (date_to)   q = q.lte('created_at', `${date_to}T23:59:59.999Z`);
+  // La búsqueda por texto la hacemos después de la consulta para evitar inyección
+  // y porque Supabase no tiene ilike sobre columnas de relaciones en un solo query.
   const { data, error } = await q;
   if (error) throw error;
-  res.json({ data });
+
+  const result = search
+    ? (data ?? []).filter((o) => {
+        const term = search.toLowerCase();
+        return (
+          o.code.toLowerCase().includes(term) ||
+          (o.customer_name ?? '').toLowerCase().includes(term) ||
+          (o.customer_phone ?? '').includes(term)
+        );
+      })
+    : (data ?? []);
+
+  res.json({ data: result });
 });
 
 adminRouter.get('/orders/:id', async (req, res) => {

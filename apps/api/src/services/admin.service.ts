@@ -42,15 +42,26 @@ export const priceTierSchema = z.object({
 });
 
 export const updateSettingsSchema = z.object({
-  store_name: z.string().trim().min(1).max(80).optional(),
+  store_name:         z.string().trim().min(1).max(80).optional(),
   whatsapp_number: z
     .string()
     .trim()
     .regex(/^\d{10,15}$/, 'Formato: código de país + número sin espacios ni +')
     .optional(),
-  gallery_address: z.string().trim().max(200).nullable().optional(),
-  opening_hours: z.string().trim().max(100).nullable().optional(),
-  welcome_message: z.string().trim().max(300).nullable().optional(),
+  gallery_address:    z.string().trim().max(200).nullable().optional(),
+  opening_hours:      z.string().trim().max(100).nullable().optional(),
+  welcome_message:    z.string().trim().max(300).nullable().optional(),
+  // Nuevos campos (004_marca.sql)
+  logo_url:           z.string().url().nullable().optional(),
+  primary_color:      z
+    .string()
+    .trim()
+    .regex(/^#[0-9A-Fa-f]{6}$/, 'Debe ser un color hexadecimal válido, ej: #1A2B3C')
+    .nullable()
+    .optional(),
+  currency_symbol:    z.string().trim().min(1).max(10).optional(),
+  phone_country_code: z.string().trim().regex(/^\d{1,4}$/, 'Solo dígitos, máximo 4').optional(),
+  location_tag:       z.string().trim().max(80).nullable().optional(),
 });
 
 export const createUserSchema = z.object({

@@ -1,32 +1,58 @@
 import Link from 'next/link';
 import { api } from '@/lib/apiClient';
-import type { Product } from '@/lib/types';
+import type { Product, StoreSettings } from '@/lib/types';
+import { DEFAULT_SETTINGS } from '@/lib/settings';
 import { ProductCard } from '@/components/catalog/ProductCard';
+
+const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+
+async function getSettings(): Promise<StoreSettings> {
+  try {
+    const res = await fetch(`${API}/settings`, { next: { revalidate: 60 } });
+    if (!res.ok) return DEFAULT_SETTINGS;
+    return (await res.json()) as StoreSettings;
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
 
 export default async function Home() {
   let featured: Product[] = [];
   let apiOnline = true;
 
-  try {
-    const res = await api<{ data: Product[] }>('/products/featured');
-    featured = res.data;
-  } catch {
-    apiOnline = false; // La API aún no está levantada o falta configurar Supabase.
+  const [settingsResult, featuredResult] = await Promise.allSettled([
+    getSettings(),
+    api<{ data: Product[] }>('/products/featured'),
+  ]);
+
+  const settings =
+    settingsResult.status === 'fulfilled' ? settingsResult.value : DEFAULT_SETTINGS;
+
+  if (featuredResult.status === 'fulfilled') {
+    featured = featuredResult.value.data;
+  } else {
+    apiOnline = false;
   }
+
+  const storeName   = settings.store_name   || 'Tienda';
+  const locationTag = settings.location_tag || null;
+  const welcome     = settings.welcome_message || null;
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-      {/* Hero Section */}
+      {/* Hero */}
       <section className="relative overflow-hidden rounded-2xl bg-neutral-900 px-6 py-12 text-white sm:px-12 sm:py-16 shadow-lg mb-10">
         <div className="relative z-10 max-w-2xl">
-          <span className="inline-block rounded-md bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-neutral-300 backdrop-blur-xs mb-3">
-            Confección Nacional · Gamarra, Lima
-          </span>
+          {locationTag && (
+            <span className="inline-block rounded-md bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-neutral-300 backdrop-blur-xs mb-3">
+              {locationTag}
+            </span>
+          )}
           <h1 className="text-3xl font-black tracking-tight sm:text-5xl">
-            Moda Urbana & Confección al Detalle
+            {welcome || `Catálogo ${storeName}`}
           </h1>
           <p className="mt-3 text-sm text-neutral-300 sm:text-base">
-            Polos en algodón gamuzado y Pima, poleras y conjuntos Estilo Tech. Pedidos directos a nuestro WhatsApp, por unidad y por mayor.
+            Prendas de calidad. Pedidos directos a nuestro WhatsApp, por unidad y por mayor.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Link
@@ -51,14 +77,17 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* Alerta si la API está desconectada */}
+      {/* Alerta API desconectada */}
       {!apiOnline && (
         <div className="mb-8 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs sm:text-sm text-amber-900">
           <p className="font-semibold">Aviso de conexión con el servidor:</p>
           <p className="mt-0.5">
             No se pudo conectar con la API local en{' '}
-            <code className="bg-amber-100 px-1 py-0.5 rounded">{process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1'}</code>.
-            Levántala ejecutando <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">npm run dev:api</code>.
+            <code className="bg-amber-100 px-1 py-0.5 rounded">
+              {process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1'}
+            </code>
+            . Levántala ejecutando{' '}
+            <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">npm run dev:api</code>.
           </p>
         </div>
       )}
@@ -82,7 +111,7 @@ export default async function Home() {
 
         {apiOnline && featured.length === 0 && (
           <div className="rounded-xl border border-dashed border-neutral-200 bg-white p-8 text-center text-xs text-neutral-500">
-            Aún no hay prendas marcadas como destacadas en la base de datos.
+            Aún no hay prendas marcadas como destacadas.
             <div className="mt-3">
               <Link href="/catalogo" className="font-semibold text-neutral-900 underline">
                 Ir al catálogo general

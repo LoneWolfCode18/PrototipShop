@@ -141,7 +141,7 @@ export default function ProductPage() {
             {currentImg && !imgError[activeImg] ? (
               <Image src={currentImg.url} alt={currentImg.alt ?? product.name} fill sizes="(max-width: 768px) 100vw, 50vw" className="object-cover object-center" priority onError={() => setImgError((e) => ({ ...e, [activeImg]: true }))} />
             ) : (
-              <PlaceholderImage label={product.category?.name ?? 'RKeens'} />
+              <PlaceholderImage label={product.category?.name ?? product.name} />
             )}
             {isOnSale && <span className="absolute top-3 left-3 rounded bg-rose-600 px-2 py-1 text-xs font-bold uppercase text-white shadow">-{discountPct}%</span>}
           </div>

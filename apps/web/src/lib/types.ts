@@ -30,6 +30,13 @@ export type StoreSettings = {
   whatsapp_number: string;
   gallery_address: string | null;
   opening_hours: string | null;
+  welcome_message: string | null;
+  // Nuevos campos (004_marca.sql)
+  logo_url: string | null;
+  primary_color: string | null;
+  currency_symbol: string;
+  phone_country_code: string;
+  location_tag: string | null;
 };
 
 export type FilterOption = {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { listOrders, setOrderStatus } from '@/lib/adminClient';
 import type { OrderFilters } from '@/lib/adminClient';
 import { toast } from '@/lib/toast';
+import { useSettings } from '@/lib/settings';
 import type { Order, OrderStatus } from '@/lib/types';
 
 /* ─── Constantes de presentación ─── */
@@ -82,10 +83,11 @@ function exportToCsv(orders: Order[]) {
 
 /* ─── WhatsApp helper ─── */
 
-function waUrl(phone: string, code: string): string {
-  // Limpiar teléfono: quitar espacios, guiones, +; añadir 51 si es local (9 dígitos)
+function waUrl(phone: string, code: string, countryCode: string): string {
   let num = phone.replace(/[\s\-+()\u00a0]/g, '');
-  if (/^9\d{8}$/.test(num)) num = `51${num}`;
+  // Si parece número local (comienza por el primer dígito del prefijo local común)
+  // y tiene ≤ 9 dígitos, añadimos el código de país
+  if (num.length <= 9 && !num.startsWith(countryCode)) num = `${countryCode}${num}`;
   const text = encodeURIComponent(`Hola, te contactamos sobre tu pedido ${code}.`);
   return `https://wa.me/${num}?text=${text}`;
 }
@@ -95,6 +97,9 @@ function waUrl(phone: string, code: string): string {
    ══════════════════════════════════════════════════════════════════ */
 
 export default function PedidosPage() {
+  const settings = useSettings();
+  const countryCode = settings.phone_country_code || '51';
+
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -337,6 +342,7 @@ export default function PedidosPage() {
               updating={updating === selectedOrder.id}
               onStatusChange={handleStatusChange}
               onBack={() => { setDetailOpen(false); }}
+              countryCode={countryCode}
             />
           )}
         </div>
@@ -354,11 +360,13 @@ function OrderDetail({
   updating,
   onStatusChange,
   onBack,
+  countryCode,
 }: {
   order: Order;
   updating: boolean;
   onStatusChange: (order: Order, status: Exclude<OrderStatus, 'enviado_whatsapp'>) => void;
   onBack: () => void;
+  countryCode: string;
 }) {
   const next = NEXT_STATUS[order.status];
   const canCancel = order.status !== 'cancelado' && order.status !== 'entregado';
@@ -391,7 +399,7 @@ function OrderDetail({
           {/* WhatsApp */}
           {hasPhone && (
             <a
-              href={waUrl(order.customer_phone!, order.code)}
+              href={waUrl(order.customer_phone!, order.code, countryCode)}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 rounded-lg border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100 transition"
@@ -436,7 +444,7 @@ function OrderDetail({
             hasPhone
               ? (v) => (
                   <a
-                    href={waUrl(order.customer_phone!, order.code)}
+                    href={waUrl(order.customer_phone!, order.code, countryCode)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="font-semibold text-green-700 underline underline-offset-2"

@@ -66,7 +66,7 @@ export function ProductCard({ product }: ProductCardProps) {
                 />
               </svg>
               <span className="mt-2 text-xs font-medium uppercase tracking-wider text-neutral-400">
-                {product.category?.name || 'RKeens'}
+                {product.category?.name || 'Sin categoría'}
               </span>
             </div>
           )}

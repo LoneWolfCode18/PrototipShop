@@ -4,18 +4,19 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCart } from '@/store/cart';
 import { useEffect, useState } from 'react';
+import { useSettings } from '@/lib/settings';
 
 export function Navbar() {
-  const pathname = usePathname();
-  const count = useCart((s) => s.count());
+  const pathname  = usePathname();
+  const count     = useCart((s) => s.count());
+  const settings  = useSettings();
   const [mounted, setMounted] = useState(false);
 
-  // Evitar error de hidratación con el estado de persistencia de Zustand
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  useEffect(() => { setMounted(true); }, []);
 
   const totalItems = mounted ? count : 0;
+  const storeName  = settings.store_name || 'Tienda';
+  const locationTag = settings.location_tag;
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-neutral-200 bg-white/95 backdrop-blur">
@@ -23,12 +24,23 @@ export function Navbar() {
         {/* Logo / Marca */}
         <div className="flex items-center gap-6 sm:gap-8">
           <Link href="/" className="flex items-center gap-2 group">
-            <span className="text-2xl font-black tracking-tight text-neutral-900 group-hover:text-neutral-700 transition">
-              RKeens
-            </span>
-            <span className="hidden text-[10px] font-bold uppercase tracking-wider text-neutral-600 sm:inline-block bg-neutral-100 px-2 py-0.5 rounded">
-              Gamarra
-            </span>
+            {settings.logo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={settings.logo_url}
+                alt={storeName}
+                className="h-9 w-auto max-w-[140px] object-contain group-hover:opacity-80 transition"
+              />
+            ) : (
+              <span className="text-2xl font-black tracking-tight text-neutral-900 group-hover:text-neutral-700 transition">
+                {storeName}
+              </span>
+            )}
+            {locationTag && (
+              <span className="hidden text-[10px] font-bold uppercase tracking-wider text-neutral-600 sm:inline-block bg-neutral-100 px-2 py-0.5 rounded">
+                {locationTag}
+              </span>
+            )}
           </Link>
 
           {/* Navegación Principal */}
@@ -56,7 +68,7 @@ export function Navbar() {
           </nav>
         </div>
 
-        {/* Acciones: Carrito */}
+        {/* Carrito */}
         <div className="flex items-center gap-3">
           <Link
             href="/carrito"

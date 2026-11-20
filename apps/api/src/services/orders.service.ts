@@ -56,8 +56,6 @@ type ValidatedItem = {
 
 /* ─── Helpers ─────────────────────────────────────────────────── */
 
-const money = (n: number) => `S/ ${n.toFixed(2)}`;
-
 /** Aplica price_tiers si corresponde; si no, devuelve el precio base del producto. */
 async function resolveUnitPrice(
   productId: string,
@@ -84,12 +82,15 @@ async function resolveUnitPrice(
 
 /** Construye el texto del mensaje de WhatsApp. */
 function buildWhatsAppText(opts: {
+  storeName: string;
   code: string;
   origin: string;
   customer: { name: string; phone?: string; delivery: string; address?: string; note?: string };
   items: ValidatedItem[];
   total: number;
+  currencySymbol: string;
 }): string {
+  const money = (n: number) => `${opts.currencySymbol} ${n.toFixed(2)}`;
   const lines = opts.items.map(
     (it, i) =>
       `${i + 1}) ${it.productName}\n   Talla: ${it.size} · Color: ${it.color}\n   ${it.qty} × ${money(it.unitPrice)} = ${money(it.lineTotal)}`,
@@ -101,7 +102,7 @@ function buildWhatsAppText(opts: {
       : `Envío a: ${opts.customer.address ?? 'dirección no especificada'}`;
 
   return [
-    '🛍️ *NUEVO PEDIDO · RKeens*',
+    `🛍️ *NUEVO PEDIDO · ${opts.storeName.toUpperCase()}*`,
     `Código: *${opts.code}*`,
     `Origen: ${opts.origin === 'online' ? 'Web' : 'Tienda'}`,
     '',
@@ -217,10 +218,10 @@ export async function createOrder(input: CreateOrderInput): Promise<{
   const subtotal = items.reduce((s, i) => s + i.lineTotal, 0);
   const total = subtotal; // sin impuestos ni envío por ahora
 
-  // 3. Obtener configuración de la tienda (número de WhatsApp)
+  // 3. Obtener configuración de la tienda (número de WhatsApp, nombre, moneda)
   const { data: settings, error: settingsError } = await supabase
     .from('store_settings')
-    .select('whatsapp_number')
+    .select('whatsapp_number, store_name, currency_symbol')
     .eq('id', 1)
     .maybeSingle();
 
@@ -228,6 +229,9 @@ export async function createOrder(input: CreateOrderInput): Promise<{
   if (!settings?.whatsapp_number) {
     throw new AppError(500, 'NO_WHATSAPP', 'El número de WhatsApp de la tienda no está configurado');
   }
+
+  const storeName      = (settings.store_name      as string | null) ?? 'Tienda';
+  const currencySymbol = (settings.currency_symbol as string | null) ?? 'S/';
 
   // 4. Generar código y construir el mensaje ANTES de insertar
   //    (el default de la BD lo genera, pero lo necesitamos para el mensaje;
@@ -243,14 +247,16 @@ export async function createOrder(input: CreateOrderInput): Promise<{
       : `Envío a: ${input.address ?? 'dirección no especificada'}`;
 
   const whatsappText = buildWhatsAppText({
+    storeName,
+    currencySymbol,
     code,
     origin: input.origin,
     customer: {
-      name: input.customer.name,
-      phone: input.customer.phone,
+      name:     input.customer.name,
+      phone:    input.customer.phone,
       delivery: deliveryLabel,
-      address: input.address,
-      note: input.customer.note,
+      address:  input.address,
+      note:     input.customer.note,
     },
     items,
     total,

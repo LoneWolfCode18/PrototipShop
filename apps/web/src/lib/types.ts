@@ -31,12 +31,20 @@ export type StoreSettings = {
   gallery_address: string | null;
   opening_hours: string | null;
   welcome_message: string | null;
-  // Nuevos campos (004_marca.sql)
+  // 004_marca.sql
   logo_url: string | null;
   primary_color: string | null;
   currency_symbol: string;
   phone_country_code: string;
   location_tag: string | null;
+  // 005_tienda_publica.sql
+  about_text: string | null;
+  hero_image_url: string | null;
+  hero_subtitle: string | null;
+  catalog_subtitle: string | null;
+  instagram_url: string | null;
+  facebook_url: string | null;
+  tiktok_url: string | null;
 };
 
 export type FilterOption = {

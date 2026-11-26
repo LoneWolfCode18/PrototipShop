@@ -1,103 +1,228 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useCart } from '@/store/cart';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSettings } from '@/lib/settings';
+
+const NAV_LINKS = [
+  { href: '/',              label: 'Inicio',         exact: true  },
+  { href: '/catalogo',      label: 'Catálogo',       exact: false },
+  { href: '/quienes-somos', label: 'Quiénes somos',  exact: false },
+  { href: '/contacto',      label: 'Contacto',       exact: false },
+];
 
 export function Navbar() {
   const pathname  = usePathname();
+  const router    = useRouter();
   const count     = useCart((s) => s.count());
   const settings  = useSettings();
-  const [mounted, setMounted] = useState(false);
+  const [mounted,       setMounted]       = useState(false);
+  const [menuOpen,      setMenuOpen]      = useState(false);
+  const [searchOpen,    setSearchOpen]    = useState(false);
+  const [searchQuery,   setSearchQuery]   = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { setMounted(true); }, []);
+  useEffect(() => { if (searchOpen) searchRef.current?.focus(); }, [searchOpen]);
+  // Cerrar menú al navegar
+  useEffect(() => { setMenuOpen(false); setSearchOpen(false); }, [pathname]);
 
   const totalItems = mounted ? count : 0;
   const storeName  = settings.store_name || 'Tienda';
-  const locationTag = settings.location_tag;
+
+  const isActive = (link: typeof NAV_LINKS[0]) =>
+    link.exact ? pathname === link.href : pathname.startsWith(link.href);
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = searchQuery.trim();
+    if (!q) return;
+    router.push(`/catalogo?q=${encodeURIComponent(q)}`);
+    setSearchQuery('');
+    setSearchOpen(false);
+  };
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-neutral-200 bg-white/95 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-        {/* Logo / Marca */}
-        <div className="flex items-center gap-6 sm:gap-8">
-          <Link href="/" className="flex items-center gap-2 group">
-            {settings.logo_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={settings.logo_url}
-                alt={storeName}
-                className="h-9 w-auto max-w-[140px] object-contain group-hover:opacity-80 transition"
-              />
+    <header className="sticky top-0 z-40 w-full border-b border-black/5 bg-white/95 shadow-sm backdrop-blur-md">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
+
+        {/* ── Logo / Nombre ── */}
+        <Link href="/" className="flex shrink-0 items-center gap-2 group">
+          {settings.logo_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={settings.logo_url}
+              alt={storeName}
+              className="h-9 w-auto max-w-[140px] object-contain transition group-hover:opacity-80"
+            />
+          ) : (
+            <span className="text-xl font-black tracking-tight text-neutral-900 transition group-hover:opacity-70">
+              {storeName}
+            </span>
+          )}
+          {settings.location_tag && (
+            <span className="hidden rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-neutral-500 sm:inline-block">
+              {settings.location_tag}
+            </span>
+          )}
+        </Link>
+
+        {/* ── Nav desktop ── */}
+        <nav className="hidden lg:flex items-center gap-0.5">
+          {NAV_LINKS.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
+                isActive(link) ? 'nav-active' : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900'
+              }`}
+            >
+              {link.label}
+            </Link>
+          ))}
+        </nav>
+
+        {/* ── Acciones derechas ── */}
+        <div className="flex items-center gap-2">
+
+          {/* Buscador expandible (desktop) */}
+          <div className="hidden sm:flex items-center">
+            {searchOpen ? (
+              <form onSubmit={handleSearch} className="flex items-center gap-1">
+                <input
+                  ref={searchRef}
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Buscar prendas…"
+                  className="w-44 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] transition"
+                />
+                <button type="submit" aria-label="Buscar"
+                  className="rounded-full p-1.5 text-neutral-500 hover:text-neutral-900 transition">
+                  <SearchIcon />
+                </button>
+                <button type="button" onClick={() => setSearchOpen(false)} aria-label="Cerrar búsqueda"
+                  className="rounded-full p-1.5 text-neutral-400 hover:text-neutral-700 transition">
+                  <CloseIcon />
+                </button>
+              </form>
             ) : (
-              <span className="text-2xl font-black tracking-tight text-neutral-900 group-hover:text-neutral-700 transition">
-                {storeName}
-              </span>
+              <button type="button" onClick={() => setSearchOpen(true)} aria-label="Buscar"
+                className="rounded-full p-2 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 transition">
+                <SearchIcon />
+              </button>
             )}
-            {locationTag && (
-              <span className="hidden text-[10px] font-bold uppercase tracking-wider text-neutral-600 sm:inline-block bg-neutral-100 px-2 py-0.5 rounded">
-                {locationTag}
-              </span>
-            )}
-          </Link>
+          </div>
 
-          {/* Navegación Principal */}
-          <nav className="flex items-center gap-1 sm:gap-2">
-            <Link
-              href="/"
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
-                pathname === '/'
-                  ? 'bg-neutral-900 text-white'
-                  : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900'
-              }`}
-            >
-              Inicio
-            </Link>
-            <Link
-              href="/catalogo"
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
-                pathname.startsWith('/catalogo')
-                  ? 'bg-neutral-900 text-white'
-                  : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900'
-              }`}
-            >
-              Catálogo
-            </Link>
-          </nav>
-        </div>
-
-        {/* Carrito */}
-        <div className="flex items-center gap-3">
+          {/* Botón carrito */}
           <Link
             href="/carrito"
-            className="relative flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3.5 py-2 text-sm font-medium text-neutral-800 shadow-sm transition hover:border-neutral-300 hover:bg-neutral-50 active:scale-95"
-            aria-label={`Carrito de compras con ${totalItems} prendas`}
+            aria-label={`Carrito con ${totalItems} ${totalItems === 1 ? 'prenda' : 'prendas'}`}
+            className="btn-primary relative flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold shadow-sm transition active:scale-95"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.8}
-              stroke="currentColor"
-              className="h-5 w-5"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"
-              />
-            </svg>
+            <BagIcon />
             <span className="hidden sm:inline">Pedido</span>
             {totalItems > 0 && (
-              <span className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-neutral-900 px-1.5 text-xs font-bold text-white">
+              <span className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-white/25 px-1 text-xs font-bold">
                 {totalItems}
               </span>
             )}
           </Link>
+
+          {/* Hamburguesa móvil */}
+          <button
+            type="button"
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-label={menuOpen ? 'Cerrar menú' : 'Abrir menú'}
+            aria-expanded={menuOpen}
+            className="rounded-lg p-2 text-neutral-600 hover:bg-neutral-100 transition lg:hidden"
+          >
+            {menuOpen ? <CloseIcon /> : <MenuIcon />}
+          </button>
         </div>
       </div>
+
+      {/* ── Menú móvil ── */}
+      {menuOpen && (
+        <div className="lg:hidden border-t border-neutral-100 bg-white px-4 pb-4 pt-3 shadow-md">
+          <nav className="flex flex-col gap-1 mb-3">
+            {NAV_LINKS.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+                  isActive(link) ? 'nav-active' : 'text-neutral-700 hover:bg-neutral-100'
+                }`}
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+
+          {/* Buscador en móvil */}
+          <form onSubmit={handleSearch} className="flex gap-2">
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Buscar prendas…"
+              className="flex-1 rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+            />
+            <button type="submit"
+              className="btn-primary rounded-lg px-4 py-2 text-sm font-semibold transition">
+              Buscar
+            </button>
+          </form>
+        </div>
+      )}
     </header>
+  );
+}
+
+/* ── Iconos SVG inline pequeños ── */
+function SearchIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+      className="h-4 w-4">
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.35-4.35" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+      className="h-5 w-5">
+      <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
+function MenuIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+      className="h-5 w-5">
+      <line x1="4" x2="20" y1="6"  y2="6"  />
+      <line x1="4" x2="20" y1="12" y2="12" />
+      <line x1="4" x2="20" y1="18" y2="18" />
+    </svg>
+  );
+}
+
+function BagIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+      className="h-4 w-4">
+      <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
+      <line x1="3" x2="21" y1="6" y2="6" />
+      <path d="M16 10a4 4 0 0 1-8 0" />
+    </svg>
   );
 }

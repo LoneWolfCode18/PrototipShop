@@ -5,3 +5,44 @@
 body {
   @apply bg-white text-neutral-900 antialiased;
 }
+
+/* ── Color primario dinámico ────────────────────────────────────
+   --color-primary     → valor de store_settings.primary_color (#RRGGBB)
+   --color-primary-rgb → partes separadas "R G B" para rgba()
+   Ambas variables se inyectan en .tienda-root desde el layout del server.
+   El admin no las usa: mantiene su propio estilo neutral.
+────────────────────────────────────────────────────────────────── */
+.tienda-root {
+  --color-primary:     #111111;
+  --color-primary-rgb: 17 17 17;
+}
+
+/* Fondo muy tenue derivado del color primario (1 % de opacidad) */
+.bg-primary-tint {
+  background-color: rgba(var(--color-primary-rgb) / 0.03);
+}
+
+/* Botón / elemento con el color primario como fondo */
+.btn-primary {
+  background-color: var(--color-primary);
+  color: #fff;
+}
+.btn-primary:hover {
+  opacity: 0.88;
+}
+
+/* Texto en color primario */
+.text-primary {
+  color: var(--color-primary);
+}
+
+/* Borde en color primario */
+.border-primary {
+  border-color: var(--color-primary);
+}
+
+/* Badge / pastilla de nav activo */
+.nav-active {
+  background-color: var(--color-primary);
+  color: #fff;
+}

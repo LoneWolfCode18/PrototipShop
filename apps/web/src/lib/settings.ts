@@ -23,6 +23,13 @@ export const DEFAULT_SETTINGS: StoreSettings = {
   currency_symbol:    'S/',
   phone_country_code: '51',
   location_tag:       null,
+  about_text:         null,
+  hero_image_url:     null,
+  hero_subtitle:      null,
+  catalog_subtitle:   null,
+  instagram_url:      null,
+  facebook_url:       null,
+  tiktok_url:         null,
 };
 
 /* ── Contexto React ── */

@@ -51,7 +51,7 @@ export const updateSettingsSchema = z.object({
   gallery_address:    z.string().trim().max(200).nullable().optional(),
   opening_hours:      z.string().trim().max(100).nullable().optional(),
   welcome_message:    z.string().trim().max(300).nullable().optional(),
-  // Nuevos campos (004_marca.sql)
+  // 004_marca.sql
   logo_url:           z.string().url().nullable().optional(),
   primary_color:      z
     .string()
@@ -62,6 +62,14 @@ export const updateSettingsSchema = z.object({
   currency_symbol:    z.string().trim().min(1).max(10).optional(),
   phone_country_code: z.string().trim().regex(/^\d{1,4}$/, 'Solo dígitos, máximo 4').optional(),
   location_tag:       z.string().trim().max(80).nullable().optional(),
+  // 005_tienda_publica.sql
+  about_text:         z.string().trim().max(3000).nullable().optional(),
+  hero_image_url:     z.string().url().nullable().optional(),
+  hero_subtitle:      z.string().trim().max(300).nullable().optional(),
+  catalog_subtitle:   z.string().trim().max(200).nullable().optional(),
+  instagram_url:      z.string().url().nullable().optional(),
+  facebook_url:       z.string().url().nullable().optional(),
+  tiktok_url:         z.string().url().nullable().optional(),
 });
 
 export const createUserSchema = z.object({
